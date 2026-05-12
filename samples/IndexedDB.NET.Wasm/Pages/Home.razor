@@ -1,0 +1,134 @@
+﻿@page "/"
+
+@inject AppDbContext Db
+
+<h3>IndexedDB.NET Demo</h3>
+
+<div style="margin-bottom:20px">
+    <button @onclick="Initialize">
+        Initialize Database
+    </button>
+
+    <button @onclick="InsertUser">
+        Insert User
+    </button>
+
+    <button @onclick="LoadUsers">
+        Load Users
+    </button>
+
+    <button @onclick="ClearUsers">
+        Clear Users
+    </button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(status))
+{
+    <p>@status</p>
+}
+
+@if (users.Count > 0)
+{
+    <ul>
+        @foreach (var user in users)
+        {
+            <li>
+                @user.Name - @user.Email
+            </li>
+        }
+    </ul>
+}
+
+@code {
+
+    private readonly List<User> users = [];
+
+    private string status = string.Empty;
+
+    private bool initialized;
+
+    private async Task Initialize()
+    {
+        try
+        {
+            await Db.InitializeAsync();
+
+            initialized = true;
+
+            status = "Database initialized.";
+        }
+        catch (Exception ex)
+        {
+            status = ex.Message;
+        }
+    }
+
+    private async Task InsertUser()
+    {
+        if (!initialized)
+        {
+            status = "Initialize database first.";
+            return;
+        }
+
+        try
+        {
+            await Db.Users.AddAsync(new User
+            {
+                Id = Guid.NewGuid(),
+                Name = $"User {DateTime.Now:HH:mm:ss}",
+                Email = $"{Guid.NewGuid()}@mail.com"
+            });
+
+            status = "User inserted.";
+        }
+        catch (Exception ex)
+        {
+            status = ex.Message;
+        }
+    }
+
+    private async Task LoadUsers()
+    {
+        if (!initialized)
+        {
+            status = "Initialize database first.";
+            return;
+        }
+
+        try
+        {
+            users.Clear();
+
+            users.AddRange(await Db.Users.GetAllAsync());
+
+            status = $"Loaded {users.Count} users.";
+        }
+        catch (Exception ex)
+        {
+            status = ex.Message;
+        }
+    }
+
+    private async Task ClearUsers()
+    {
+        if (!initialized)
+        {
+            status = "Initialize database first.";
+            return;
+        }
+
+        try
+        {
+            await Db.Users.ClearAsync();
+
+            users.Clear();
+
+            status = "Users cleared.";
+        }
+        catch (Exception ex)
+        {
+            status = ex.Message;
+        }
+    }
+}

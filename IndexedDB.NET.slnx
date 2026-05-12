@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/IndexedDB.NET.Wasm/IndexedDB.NET.Wasm.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/IndexedDB.NET/IndexedDB.NET.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+</Solution>
