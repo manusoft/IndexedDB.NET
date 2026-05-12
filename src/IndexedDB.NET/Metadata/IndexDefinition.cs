@@ -1,4 +1,4 @@
-﻿namespace ManuHub.IndexedDB.Core;
+﻿namespace ManuHub.IndexedDB.Metadata;
 
 public sealed class IndexDefinition
 {
