@@ -4,22 +4,30 @@
 <div class="container py-4">
 
     <div class="mb-4 text-center">
-        <h2 class="fw-bold">📦 Todo Manager</h2>
-        <p class="text-muted">IndexedDB + Blazor CRUD Sample</p>
+        <h2 class="fw-bold">📦 IndexedDB Test Lab</h2>
+        <p class="text-muted">Full CRUD + Batch Operations</p>
     </div>
 
-    <!-- ADD CARD -->
+    <!-- ACTION PANEL -->
     <div class="card mb-3 shadow-sm">
-        <div class="card-body d-flex gap-2">
+        <div class="card-body d-flex flex-wrap gap-2">
 
             <input class="form-control"
-                   placeholder="Enter new todo..."
+                   style="min-width:200px"
+                   placeholder="Enter todo..."
                    @bind="title"
                    @bind:event="oninput" />
 
-            <button class="btn btn-primary"
-                    @onclick="AddTodo">
-                + Add
+            <button class="btn btn-primary" @onclick="AddTodo">Add</button>
+
+            <button class="btn btn-success" @onclick="AddBatch">Batch Add</button>
+
+            <button class="btn btn-warning" @onclick="MarkAllDone">Mark All Done</button>
+
+            <button class="btn btn-danger" @onclick="DeleteCompleted">Delete Done</button>
+
+            <button class="btn btn-outline-secondary" @onclick="Load">
+                Refresh
             </button>
 
         </div>
@@ -29,7 +37,7 @@
     @if (todos.Count == 0)
     {
         <div class="alert alert-secondary text-center">
-            No todos yet
+            No items found
         </div>
     }
 
@@ -67,15 +75,8 @@
 
                     @if (editId == item.Id)
                     {
-                        <button class="btn btn-success btn-sm"
-                                @onclick="SaveEdit">
-                            Save
-                        </button>
-
-                        <button class="btn btn-outline-secondary btn-sm"
-                                @onclick="CancelEdit">
-                            Cancel
-                        </button>
+                        <button class="btn btn-success btn-sm" @onclick="SaveEdit">Save</button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="CancelEdit">Cancel</button>
                     }
                     else
                     {
@@ -110,6 +111,7 @@
         await Load();
     }
 
+    // ---------------- LOAD ----------------
     private async Task Load()
     {
         todos = (await Db.Todos.GetAllAsync()).ToList();
@@ -131,11 +133,48 @@
         await Load();
     }
 
+    // ---------------- BATCH ADD ----------------
+    private async Task AddBatch()
+    {
+        var items = Enumerable.Range(1, 5).Select(i => new TodoItem
+        {
+            Title = $"Batch Task {i}",
+            IsDone = false
+        });
+
+        await Db.Todos.AddRangeAsync(items);
+        await Load();
+    }
+
     // ---------------- TOGGLE ----------------
     private async Task Toggle(TodoItem item)
     {
         item.IsDone = !item.IsDone;
-        await Db.Todos.AddAsync(item);
+        await Db.Todos.UpdateAsync(item);
+        await Load();
+    }
+
+    // ---------------- MARK ALL DONE (BATCH UPDATE) ----------------
+    private async Task MarkAllDone()
+    {
+        var items = todos;
+
+        foreach (var i in items)
+            i.IsDone = true;
+
+        await Db.Todos.UpdateRangeAsync(items);
+        await Load();
+    }
+
+    // ---------------- DELETE COMPLETED (BATCH DELETE) ----------------
+    private async Task DeleteCompleted()
+    {
+        var keys = todos
+            .Where(x => x.IsDone)
+            .Select(x => x.Id)
+            .ToList();
+
+        await Db.Todos.DeleteRangeAsync(keys);
         await Load();
     }
 

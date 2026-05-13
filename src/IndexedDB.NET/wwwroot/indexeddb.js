@@ -18,6 +18,19 @@ function isDbInvalid(db) {
     }
 }
 
+function normalizeEntity(entity) {
+
+    if (!entity || typeof entity !== "object") {
+        return entity;
+    }
+
+    return {
+        Id: entity.Id ?? entity.id ?? crypto.randomUUID(),
+        Title: entity.Title ?? entity.title ?? "",
+        IsDone: entity.IsDone ?? entity.isDone ?? false
+    };
+}
+
 // -----------------------------------------------------
 // OPEN DATABASE (FIXED - NO STALE CONNECTIONS)
 // -----------------------------------------------------
@@ -185,7 +198,7 @@ async function execute(dbName, storeName, mode, action) {
 }
 
 // -----------------------------------------------------
-// CRUD (FIXED)
+// CRUD 
 // -----------------------------------------------------
 
 export async function add(db, store, entity) {
@@ -195,9 +208,7 @@ export async function add(db, store, entity) {
             throw new Error("Invalid entity");
         }
 
-        if (!entity.Id) {
-            entity.Id = crypto.randomUUID();
-        }
+        entity = normalizeEntity(entity);
 
         return s.add(entity);
     });
@@ -215,11 +226,8 @@ export async function addRange(db, store, entities) {
 
         for (const e of entities) {
 
-            if (!e.Id) {
-                e.Id = crypto.randomUUID();
-            }
-
-            s.add(e);
+            const entity = normalizeEntity(e);
+            s.add(entity);
         }
 
         tx.oncomplete = () => resolve(true);
@@ -235,17 +243,73 @@ export async function put(db, store, entity) {
             throw new Error("Invalid entity");
         }
 
-        if (!entity.Id) {
-            entity.Id = crypto.randomUUID();
-        }
-
-        // 🔥 THIS IS THE KEY DIFFERENCE
+        entity = normalizeEntity(entity);
         return s.put(entity);
+    });
+}
+
+export async function putRange(db, store, entities) {
+
+    const cfg = getConfig(db);
+    const database = await openDatabase(
+        db,
+        cfg.version,
+        cfg.stores);
+
+    return new Promise((resolve, reject) => {
+
+        try {
+
+            const tx = database.transaction(store, "readwrite");
+            const s = tx.objectStore(store);
+
+            for (const e of entities) {
+
+                const entity = normalizeEntity(e);
+
+                s.put(entity);
+            }
+
+            tx.oncomplete = () => resolve(true);
+
+            tx.onerror = () => reject(tx.error);
+
+            tx.onabort = () => reject(tx.error);
+
+        } catch (err) {
+            reject(err);
+        }
     });
 }
 
 export async function remove(db, store, key) {
     return execute(db, store, "readwrite", s => s.delete(key));
+}
+
+export async function removeRange(db, store, keys) {
+
+    const cfg = getConfig(db);
+    const database = await openDatabase(db, cfg.version, cfg.stores);
+
+    return new Promise((resolve, reject) => {
+
+        try {
+
+            const tx = database.transaction(store, "readwrite");
+            const s = tx.objectStore(store);
+
+            for (const key of keys) {
+                s.delete(key);
+            }
+
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+
+        } catch (err) {
+            reject(err);
+        }
+    });
 }
 
 export async function get(db, store, key) {

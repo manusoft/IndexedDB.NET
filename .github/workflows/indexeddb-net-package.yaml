@@ -1,0 +1,54 @@
+name: Publish ManuHub.IndexedDB Package
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+  
+permissions:
+  packages: write
+  contents: read
+  
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore IndexedDB.NET
+        run: dotnet restore src/IndexedDB.NET/IndexedDB.NET.csproj
+
+      - name: Build IndexedDB.NET
+        run: dotnet build src/IndexedDB.NET/IndexedDB.NET.csproj -c Release
+      - name: Pack IndexedDB.NET
+        run: dotnet pack src/IndexedDB.NET/IndexedDB.NET.csproj -c Release --output ./nupkg
+
+      - name: Publish to nuget.org and GitHub Packages
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem "./nupkg" -Filter "*.nupkg" | Select-Object -First 1 -ExpandProperty FullName
+          
+          if ($nupkg) {
+            Write-Output "Found package: $nupkg"
+            # ── Publish to nuget.org ───────────────────────────────────────
+            dotnet nuget push "$nupkg" `
+              --source "https://api.nuget.org/v3/index.json" `
+              --api-key "${{ secrets.NUGET_KEY }}" `
+              --skip-duplicate
+            # ── Publish to GitHub Packages ─────────────────────────────────
+            dotnet nuget push "$nupkg" `
+              --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" `
+              --api-key "${{ secrets.GITHUB_TOKEN }}" `
+              --skip-duplicate
+          } 
+          else {
+              Write-Output "No .nupkg found – skipping nuget.org"
+          }

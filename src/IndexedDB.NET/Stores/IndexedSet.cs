@@ -72,6 +72,18 @@ public sealed class IndexedSet<T>
             entity);
     }
 
+    public async ValueTask UpdateRangeAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default)
+    {
+        var js = await JS();
+
+        await js.InvokeVoidAsync(
+            "putRange",
+            cancellationToken,
+            _databaseName,
+            _storeName,
+            entities);
+    }
+
     public async ValueTask DeleteAsync(object key, CancellationToken cancellationToken = default)
     {
         var js = await JS();
@@ -82,7 +94,19 @@ public sealed class IndexedSet<T>
             _databaseName,
             _storeName,
             key);
-    }  
+    }
+
+    public async ValueTask DeleteRangeAsync<TKey>(IEnumerable<TKey> keys, CancellationToken cancellationToken = default)
+    {
+        var js = await JS();
+
+        await js.InvokeVoidAsync(
+            "removeRange",
+            cancellationToken,
+            _databaseName,
+            _storeName,
+            keys);
+    }
 
     public async ValueTask<T?> GetAsync(object key, CancellationToken cancellationToken = default)
     {
