@@ -1,134 +1,215 @@
 ﻿@page "/"
-
 @inject AppDbContext Db
 
-<h3>IndexedDB.NET Demo</h3>
+<div class="container py-4">
 
-<div style="margin-bottom:20px">
-    <button @onclick="Initialize">
-        Initialize Database
-    </button>
+    <div class="mb-4 text-center">
+        <h2 class="fw-bold">📦 IndexedDB Test Lab</h2>
+        <p class="text-muted">Full CRUD + Batch Operations</p>
+    </div>
 
-    <button @onclick="InsertUser">
-        Insert User
-    </button>
+    <!-- ACTION PANEL -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-body d-flex flex-wrap gap-2">
 
-    <button @onclick="LoadUsers">
-        Load Users
-    </button>
+            <input class="form-control"
+                   style="min-width:200px"
+                   placeholder="Enter todo..."
+                   @bind="title"
+                   @bind:event="oninput" />
 
-    <button @onclick="ClearUsers">
-        Clear Users
-    </button>
+            <button class="btn btn-primary" @onclick="AddTodo">Add</button>
+
+            <button class="btn btn-success" @onclick="AddBatch">Batch Add</button>
+
+            <button class="btn btn-warning" @onclick="MarkAllDone">Mark All Done</button>
+
+            <button class="btn btn-danger" @onclick="DeleteCompleted">Delete Done</button>
+
+            <button class="btn btn-outline-secondary" @onclick="Load">
+                Refresh
+            </button>
+
+        </div>
+    </div>
+
+    <!-- LIST -->
+    @if (todos.Count == 0)
+    {
+        <div class="alert alert-secondary text-center">
+            No items found
+        </div>
+    }
+
+    @foreach (var item in todos)
+    {
+        <div class="card mb-2 shadow-sm">
+            <div class="card-body d-flex justify-content-between align-items-center">
+
+                <!-- LEFT -->
+                <div class="d-flex align-items-center gap-2">
+
+                    <input type="checkbox"
+                           class="form-check-input"
+                           checked="@item.IsDone"
+                           @onchange="() => Toggle(item)" />
+
+                    @if (editId == item.Id)
+                    {
+                        <input class="form-control"
+                               style="max-width:250px"
+                               @bind="editTitle"
+                               @bind:event="oninput" />
+                    }
+                    else
+                    {
+                        <span class="@(item.IsDone ? "text-decoration-line-through text-muted" : "")">
+                            @item.Title
+                        </span>
+                    }
+
+                </div>
+
+                <!-- RIGHT -->
+                <div class="d-flex gap-2">
+
+                    @if (editId == item.Id)
+                    {
+                        <button class="btn btn-success btn-sm" @onclick="SaveEdit">Save</button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="CancelEdit">Cancel</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-outline-primary btn-sm"
+                                @onclick="() => StartEdit(item)">
+                            Edit
+                        </button>
+
+                        <button class="btn btn-outline-danger btn-sm"
+                                @onclick="() => Delete(item)">
+                            Delete
+                        </button>
+                    }
+
+                </div>
+
+            </div>
+        </div>
+    }
+
 </div>
 
-@if (!string.IsNullOrWhiteSpace(status))
-{
-    <p>@status</p>
-}
-
-@if (users.Count > 0)
-{
-    <ul>
-        @foreach (var user in users)
-        {
-            <li>
-                @user.Name - @user.Email
-            </li>
-        }
-    </ul>
-}
-
 @code {
+    private string title = "";
+    private List<TodoItem> todos = new();
 
-    private readonly List<User> users = [];
+    private Guid? editId;
+    private string editTitle = "";
 
-    private string status = string.Empty;
-
-    private bool initialized;
-
-    private async Task Initialize()
+    protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            await Db.InitializeAsync();
-
-            initialized = true;
-
-            status = "Database initialized.";
-        }
-        catch (Exception ex)
-        {
-            status = ex.Message;
-        }
+        await Load();
     }
 
-    private async Task InsertUser()
+    // ---------------- LOAD ----------------
+    private async Task Load()
     {
-        if (!initialized)
-        {
-            status = "Initialize database first.";
-            return;
-        }
-
-        try
-        {
-            await Db.Users.AddAsync(new User
-            {
-                Id = Guid.NewGuid(),
-                Name = $"User {DateTime.Now:HH:mm:ss}",
-                Email = $"{Guid.NewGuid()}@mail.com"
-            });
-
-            status = "User inserted.";
-        }
-        catch (Exception ex)
-        {
-            status = ex.Message;
-        }
+        todos = (await Db.Todos.GetAllAsync()).ToList();
     }
 
-    private async Task LoadUsers()
+    // ---------------- CREATE ----------------
+    private async Task AddTodo()
     {
-        if (!initialized)
-        {
-            status = "Initialize database first.";
+        if (string.IsNullOrWhiteSpace(title))
             return;
-        }
 
-        try
+        await Db.Todos.AddAsync(new TodoItem
         {
-            users.Clear();
+            Title = title,
+            IsDone = false
+        });
 
-            users.AddRange(await Db.Users.GetAllAsync());
-
-            status = $"Loaded {users.Count} users.";
-        }
-        catch (Exception ex)
-        {
-            status = ex.Message;
-        }
+        title = "";
+        await Load();
     }
 
-    private async Task ClearUsers()
+    // ---------------- BATCH ADD ----------------
+    private async Task AddBatch()
     {
-        if (!initialized)
+        var items = Enumerable.Range(1, 5).Select(i => new TodoItem
         {
-            status = "Initialize database first.";
-            return;
-        }
+            Title = $"Batch Task {i}",
+            IsDone = false
+        });
 
-        try
-        {
-            await Db.Users.ClearAsync();
+        await Db.Todos.AddRangeAsync(items);
+        await Load();
+    }
 
-            users.Clear();
+    // ---------------- TOGGLE ----------------
+    private async Task Toggle(TodoItem item)
+    {
+        item.IsDone = !item.IsDone;
+        await Db.Todos.UpdateAsync(item);
+        await Load();
+    }
 
-            status = "Users cleared.";
-        }
-        catch (Exception ex)
-        {
-            status = ex.Message;
-        }
+    // ---------------- MARK ALL DONE (BATCH UPDATE) ----------------
+    private async Task MarkAllDone()
+    {
+        var items = todos;
+
+        foreach (var i in items)
+            i.IsDone = true;
+
+        await Db.Todos.UpdateRangeAsync(items);
+        await Load();
+    }
+
+    // ---------------- DELETE COMPLETED (BATCH DELETE) ----------------
+    private async Task DeleteCompleted()
+    {
+        var keys = todos
+            .Where(x => x.IsDone)
+            .Select(x => x.Id)
+            .ToList();
+
+        await Db.Todos.DeleteRangeAsync(keys);
+        await Load();
+    }
+
+    // ---------------- EDIT ----------------
+    private void StartEdit(TodoItem item)
+    {
+        editId = item.Id;
+        editTitle = item.Title;
+    }
+
+    private void CancelEdit()
+    {
+        editId = null;
+        editTitle = "";
+    }
+
+    private async Task SaveEdit()
+    {
+        var item = todos.FirstOrDefault(x => x.Id == editId);
+        if (item is null) return;
+
+        item.Title = editTitle;
+
+        await Db.Todos.UpdateAsync(item);
+
+        editId = null;
+        editTitle = "";
+
+        await Load();
+    }
+
+    // ---------------- DELETE ----------------
+    private async Task Delete(TodoItem item)
+    {
+        await Db.Todos.DeleteAsync(item.Id);
+        await Load();
     }
 }

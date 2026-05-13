@@ -1,37 +1,38 @@
-using ManuHub.IndexedDB.Core;
+using ManuHub.IndexedDB;
+using ManuHub.IndexedDB.Context;
+using ManuHub.IndexedDB.Queries;
+using ManuHub.IndexedDB.Stores;
 using Microsoft.JSInterop;
 
-public sealed class AppDbContext : IndexedDbContext
+public class AppDbContext : IndexedDbContext
 {
-    public AppDbContext(
-        IJSRuntime jsRuntime,
-        IndexedDbOptions options)
-        : base(jsRuntime, options)
+    public AppDbContext(IJSRuntime js, ILogger<AppDbContext> logger)
+        : base(js, new IndexedDbOptions
+        {
+            DatabaseName = "SampleDB",
+            Version = 1
+        }, logger)
     {
     }
 
-    public IndexedSet<User> Users => Set<User>("users");
+    // -----------------------------------------------------
+    // ENTITY REGISTRY
+    // -----------------------------------------------------
 
-    protected override List<StoreDefinition> GetStores()
+    protected override IEnumerable<Type> GetEntityTypes()
     {
-        return
-        [
-            new StoreDefinition
-            {
-                Name = "users",
-                KeyPath = "id",
-                AutoIncrement = false,
-
-                Indexes =
-                [
-                    new IndexDefinition
-                    {
-                        Name = "email",
-                        KeyPath = "email",
-                        Unique = true
-                    }
-                ]
-            }
-        ];
+        return new[]
+        {
+            typeof(TodoItem)
+        };
     }
+
+    // -----------------------------------------------------
+    // STORES
+    // -----------------------------------------------------
+
+    public IndexedSet<TodoItem> Todos => Set<TodoItem>("todos");
+
+    // OPTIONAL: Query access (clean API)
+    public IndexedQuery<TodoItem> TodoQuery => Query<TodoItem>("todos");
 }
