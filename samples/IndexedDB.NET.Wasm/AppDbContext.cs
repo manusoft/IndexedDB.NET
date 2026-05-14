@@ -2,16 +2,15 @@ using ManuHub.IndexedDB;
 using ManuHub.IndexedDB.Context;
 using ManuHub.IndexedDB.Queries;
 using ManuHub.IndexedDB.Stores;
-using Microsoft.JSInterop;
 
 public class AppDbContext : IndexedDbContext
 {
-    public AppDbContext(IJSRuntime js, ILogger<AppDbContext> logger)
-        : base(js, new IndexedDbOptions
+    public AppDbContext(ILogger<AppDbContext> logger)
+        : base(new IndexedDbOptions
         {
             DatabaseName = "SampleDB",
             Version = 1
-        }, logger)
+        },logger)
     {
     }
 
@@ -21,10 +20,7 @@ public class AppDbContext : IndexedDbContext
 
     protected override IEnumerable<Type> GetEntityTypes()
     {
-        return new[]
-        {
-            typeof(TodoItem)
-        };
+        yield return typeof(TodoItem);
     }
 
     // -----------------------------------------------------

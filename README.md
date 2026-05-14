@@ -2,7 +2,7 @@
 
 # 📦 IndexedDB.NET
 
-> **v3.0**  
+> **v1.1**  
 > A lightweight, EF Core–style IndexedDB wrapper for **Blazor WebAssembly**
 
 ---
@@ -12,6 +12,19 @@
 **IndexedDB.NET** is a .NET-first abstraction over the browser’s IndexedDB API, designed specifically for **Blazor WebAssembly** applications.
 
 It provides a clean, strongly-typed, EF Core–inspired API to manage client-side storage without writing JavaScript.
+
+---
+
+## ♻️ Changelog v1.1.0
+
+### Added
+- Added `AddIndexedDb<TContext>()` service registration extension
+
+### Improved
+- Simplified `IndexedDbContext` setup
+- Improved dependency injection experience
+- Reduced manual `IJSRuntime` boilerplate
+- Improved EF Core–style architecture and usability
 
 ---
 
@@ -77,7 +90,7 @@ dotnet add package IndexedDB.NET
 ### 1. Register DbContext
 
 ```csharp
-builder.Services.AddScoped<AppDbContext>();
+builder.Services.AddIndexedDb<AppDbContext>();
 ```
 
 ---
@@ -87,43 +100,58 @@ builder.Services.AddScoped<AppDbContext>();
 ```csharp
 public class AppDbContext : IndexedDbContext
 {
-    public AppDbContext(IJSRuntime js) : base(js)
-    {
-    }
-
-    protected override IndexedDbOptions OnConfiguring()
-    {
-        return new IndexedDbOptions
+    public AppDbContext()
+        : base(new IndexedDbOptions
         {
             DatabaseName = "SampleDB",
-            Version = 1,
-            Stores =
-            {
-                new StoreSchema
-                {
-                    Name = "todos",
-                    KeyPath = "Id",
-                    AutoIncrement = false,
-
-                    Indexes =
-                    {
-                        new IndexSchema
-                        {
-                            Name = "Title",
-                            KeyPath = "Title"
-                        },
-                        new IndexSchema
-                        {
-                            Name = "IsDone",
-                            KeyPath = "IsDone"
-                        }
-                    }
-                }
-            }
-        };
+            Version = 1
+        })
+    {
     }
 
     public IndexedSet<TodoItem> Todos => Set<TodoItem>("todos");
+}
+```
+
+**OR**
+
+```csharp
+public class AppDbContext : IndexedDbContext
+{
+    public AppDbContext(ILogger<AppDbContext> logger)
+        : base(new IndexedDbOptions
+        {
+            DatabaseName = "SampleDB",
+            Version = 1
+        }, logger)
+    {
+    }
+
+    // -----------------------------------------------------
+    // ENTITY REGISTRY
+    // -----------------------------------------------------
+
+    protected override IEnumerable<Type> GetEntityTypes()
+    {
+        yield return typeof(TodoItem);
+
+        // Add more entity types here as needed
+    }
+
+    // -----------------------------------------------------
+    // STORES
+    // -----------------------------------------------------
+
+    public IndexedSet<TodoItem> Todos => Set<TodoItem>("todos");
+
+    // Add more stores here as needed
+
+    // -----------------------------------------------------
+    // OPTIONAL: Query access (clean API)
+    // -----------------------------------------------------
+    public IndexedQuery<TodoItem> TodoQuery => Query<TodoItem>("todos");
+
+    // Add more queries here as needed
 }
 ```
 
@@ -306,7 +334,7 @@ MIT License
 
 | Property  | Value                     |
 | --------- | ------------------------- |
-| Version   | 1.0.0                     |
+| Version   | 1.1.0                     |
 | Stability | Production (Core CRUD)    |
 | Target    | Blazor WebAssembly        |
 | Scope     | Client-side IndexedDB ORM |
