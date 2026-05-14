@@ -1,6 +1,7 @@
 ﻿using ManuHub.IndexedDB.Metadata;
 using ManuHub.IndexedDB.Queries;
 using ManuHub.IndexedDB.Stores;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 
@@ -8,25 +9,29 @@ namespace ManuHub.IndexedDB.Context;
 
 public abstract class IndexedDbContext
 {
-    private readonly IJSRuntime _js;
     private readonly IndexedDbOptions _options;
-
+    private IJSRuntime? _js;
     private IJSObjectReference? _module;
     private bool _initialized;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
-    protected IndexedDbContext(IJSRuntime js, IndexedDbOptions options, ILogger? logger = null)
+    internal IServiceProvider Services { get; set; } = default!;
+
+    protected IndexedDbContext(IndexedDbOptions options, ILogger? logger = null)
     {
-        _js = js;
         _options = options;
     }
 
     protected abstract IEnumerable<Type> GetEntityTypes();
 
     // -----------------------------------------------------
-    // AUTO INITIALIZATION (SAFE)
+    // JS RUNTIME RESOLUTION
     // -----------------------------------------------------
+    private IJSRuntime JS => _js ??= Services.GetRequiredService<IJSRuntime>();
 
+    // -----------------------------------------------------
+    // AUTO INITIALIZATION
+    // -----------------------------------------------------
     private async Task EnsureReadyAsync()
     {
         if (_initialized)
@@ -39,7 +44,7 @@ public abstract class IndexedDbContext
             if (_initialized)
                 return;
 
-            _module = await _js.InvokeAsync<IJSObjectReference>(
+            _module = await JS.InvokeAsync<IJSObjectReference>(
                 "import",
                 "./_content/ManuHub.IndexedDB/indexeddb.js");
 
@@ -64,24 +69,21 @@ public abstract class IndexedDbContext
     // -----------------------------------------------------
     // SAFE MODULE ACCESS
     // -----------------------------------------------------
-
-    private async Task<IJSObjectReference> Module()
+    internal async Task<IJSObjectReference> Module()
     {
         await EnsureReadyAsync();
         return _module!;
     }
 
     // -----------------------------------------------------
-    // STORE ACCESS (FIXED - NO ERRORS)
+    // STORE ACCESS
     // -----------------------------------------------------
-
     protected IndexedSet<T> Set<T>(string storeName)
     {
-        // IMPORTANT: DO NOT block UI
         _ = EnsureReadyAsync();
 
         return new IndexedSet<T>(
-            Module, // pass function, not object
+            Module,
             _options.DatabaseName,
             storeName);
     }
@@ -89,7 +91,6 @@ public abstract class IndexedDbContext
     // -----------------------------------------------------
     // QUERY
     // -----------------------------------------------------
-
     protected IndexedQuery<T> Query<T>(string storeName)
     {
         _ = EnsureReadyAsync();

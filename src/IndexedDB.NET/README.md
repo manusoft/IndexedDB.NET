@@ -3,7 +3,7 @@
 
 # 📦 ManuHub.IndexedDB
 
-> **v3.0**  
+> **v1.1**  
 A lightweight, production-ready **IndexedDB wrapper for Blazor WebAssembly** with a clean EF-Core-inspired API.
 
 ---
@@ -13,6 +13,19 @@ A lightweight, production-ready **IndexedDB wrapper for Blazor WebAssembly** wit
 **ManuHub.IndexedDB** provides a simple and strongly structured API for working with browser IndexedDB in Blazor WASM applications.
 
 It abstracts JavaScript interop complexity and offers a clean .NET-first developer experience.
+
+---
+
+## ♻️ Changelog v1.1.0
+
+### Added
+- Added `AddIndexedDb<TContext>()` service registration extension
+
+### Improved
+- Simplified `IndexedDbContext` setup
+- Improved dependency injection experience
+- Reduced manual `IJSRuntime` boilerplate
+- Improved EF Core–style architecture and usability
 
 ---
 
@@ -43,7 +56,7 @@ dotnet add package ManuHub.IndexedDB
 ### 1. Register DbContext
 
 ```csharp
-builder.Services.AddScoped<AppDbContext>();
+builder.Services.AddIndexedDb<AppDbContext>();
 ```
 
 ---
@@ -53,12 +66,12 @@ builder.Services.AddScoped<AppDbContext>();
 ```csharp
 public class AppDbContext : IndexedDbContext
 {
-    public AppDbContext(IJSRuntime js, ILogger<AppDbContext> logger)
-        : base(js, new IndexedDbOptions
+    public AppDbContext()
+        : base(new IndexedDbOptions
         {
             DatabaseName = "SampleDB",
             Version = 1
-        }, logger)
+        })
     {
     }
 
@@ -71,8 +84,8 @@ public class AppDbContext : IndexedDbContext
 ```csharp
 public class AppDbContext : IndexedDbContext
 {
-    public AppDbContext(IJSRuntime js, ILogger<AppDbContext> logger)
-        : base(js, new IndexedDbOptions
+    public AppDbContext(ILogger<AppDbContext> logger)
+        : base(new IndexedDbOptions
         {
             DatabaseName = "SampleDB",
             Version = 1
@@ -86,10 +99,9 @@ public class AppDbContext : IndexedDbContext
 
     protected override IEnumerable<Type> GetEntityTypes()
     {
-        return new[]
-        {
-            typeof(TodoItem)
-        };
+        yield return typeof(TodoItem);
+
+        // Add more entity types here as needed
     }
 
     // -----------------------------------------------------
@@ -98,8 +110,14 @@ public class AppDbContext : IndexedDbContext
 
     public IndexedSet<TodoItem> Todos => Set<TodoItem>("todos");
 
+    // Add more stores here as needed
+
+    // -----------------------------------------------------
     // OPTIONAL: Query access (clean API)
+    // -----------------------------------------------------
     public IndexedQuery<TodoItem> TodoQuery => Query<TodoItem>("todos");
+
+    // Add more queries here as needed
 }
 ```
 
@@ -265,7 +283,7 @@ This project is designed to evolve toward a full EF-Core-like IndexedDB ORM.
 
 ## ⭐ Status
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Stability:** Production-ready (core CRUD)  
 **Target:** Blazor WebAssembly applications  
 
