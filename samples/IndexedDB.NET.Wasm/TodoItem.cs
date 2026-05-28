@@ -1,6 +1,6 @@
 using ManuHub.IndexedDB.Attributes;
 
-[IndexedStore("todos")]
+[IndexedStore("Todos")]
 public class TodoItem
 {
     [IndexedKey]
@@ -9,4 +9,6 @@ public class TodoItem
     public string Title { get; set; } = "";
 
     public bool IsDone { get; set; }
+
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

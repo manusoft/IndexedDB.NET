@@ -2,5 +2,5 @@
 
 public class IndexedDbException : Exception
 {
-    public IndexedDbException(string message) : base(message) { }
+    public IndexedDbException(string message, Exception innerException) : base(message, innerException) { }
 }

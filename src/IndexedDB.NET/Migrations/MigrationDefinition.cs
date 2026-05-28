@@ -3,11 +3,11 @@
 public class MigrationDefinition
 {
     public int Version { get; }
-    public Action<MigrationBuilder> Action { get; }
+    public Action<MigrationBuilder> Configure { get; }
 
-    public MigrationDefinition(int version, Action<MigrationBuilder> action)
+    public MigrationDefinition(int version, Action<MigrationBuilder> configure)
     {
         Version = version;
-        Action = action;
+        Configure = configure;
     }
 }

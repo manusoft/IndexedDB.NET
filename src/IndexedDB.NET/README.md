@@ -1,44 +1,44 @@
-
-﻿﻿![Static Badge](https://img.shields.io/badge/ManuHub.IndexedDB-blue) ![NuGet Version](https://img.shields.io/nuget/v/ManuHub.IndexedDB)  ![NuGet Downloads](https://img.shields.io/nuget/dt/ManuHub.IndexedDB)
+![Static Badge](https://img.shields.io/badge/ManuHub.IndexedDB-blue) 
+![NuGet Version](https://img.shields.io/nuget/v/ManuHub.IndexedDB) 
+![NuGet Downloads](https://img.shields.io/nuget/dt/ManuHub.IndexedDB)
 
 # 📦 ManuHub.IndexedDB
 
-> **v1.1**  
-A lightweight, production-ready **IndexedDB wrapper for Blazor WebAssembly** with a clean EF-Core-inspired API.
+> **v1.2**  
+A lightweight, production-ready **IndexedDB wrapper for Blazor WebAssembly** with EF-Core-inspired API.
 
 ---
 
 ## 🚀 Overview
 
-**ManuHub.IndexedDB** provides a simple and strongly structured API for working with browser IndexedDB in Blazor WASM applications.
-
-It abstracts JavaScript interop complexity and offers a clean .NET-first developer experience.
+**ManuHub.IndexedDB v1.2** is a robust, multi-entity IndexedDB solution for Blazor WebAssembly. It provides a clean, familiar .NET API while handling the complexities of browser storage.
 
 ---
 
-## ♻️ Changelog v1.1.0
+## ♻️ Changelog v1.2
 
-### Added
-- Added `AddIndexedDb<TContext>()` service registration extension
-
-### Improved
-- Simplified `IndexedDbContext` setup
-- Improved dependency injection experience
-- Reduced manual `IJSRuntime` boilerplate
-- Improved EF Core–style architecture and usability
+### Major Improvements
+- **Full Multi-Entity Support** 
+- **Robust Migration System** with version management
+- **Stable Data Persistence** 
+- **Smart Entity Normalization** — Works with `Guid`, `int`, `string` keys
+- **Improved Version Conflict Handling**
+- **Better Error Messages & Debugging**
+- **Enhanced Service Registration** with options delegate
+- **Stable CRUD + Batch Operations** 
 
 ---
 
-## ✨ Features (V1)
+## ✨ Features
 
-✔ Full CRUD support (Add / Get / Update / Delete)   
-✔ Batch operations (AddRange / UpdateRange / DeleteRange)  
-✔ EF-style `DbContext` pattern  
-✔ Clean JS interop abstraction   
-✔ IndexedDB schema initialization  
-✔ Safe transaction handling  
-✔ GUID/string key support  
-✔ Blazor WebAssembly optimized  
+✔ Full CRUD + Batch operations  
+✔ Multi-entity support (multiple stores)  
+✔ EF Core-style `DbContext` pattern  
+✔ Robust migration & versioning system  
+✔ `Guid`, `int`, `string` key support  
+✔ Smart automatic `Id` handling  
+✔ Safe transaction management  
+✔ Production-ready stability  
 ✔ Lightweight & dependency-free  
 
 ---
@@ -53,218 +53,162 @@ dotnet add package ManuHub.IndexedDB
 
 ## ⚙️ Setup
 
-### 1. Register DbContext
+### 1. Register in `Program.cs`
 
 ```csharp
-builder.Services.AddIndexedDb<AppDbContext>();
-```
+builder.Services.AddIndexedDb<AppDbContext>(options =>
+{
+    options.DatabaseName = "MyAppDb";
+    options.Version = 5;                    // Increase when schema changes
 
----
+    // Migrations (recommended)
+    options.Migrations.Add(1, builder =>
+    {
+        builder.CreateStore<TodoItem>();
+        builder.CreateStore<User>();
+    });
+
+    // Add more migrations as needed
+});
+```
 
 ### 2. Create DbContext
 
 ```csharp
 public class AppDbContext : IndexedDbContext
 {
-    public AppDbContext()
-        : base(new IndexedDbOptions
-        {
-            DatabaseName = "SampleDB",
-            Version = 1
-        })
-    {
-    }
-
-    public IndexedSet<TodoItem> Todos => Set<TodoItem>("todos");
-}
-```
-
-**OR**
-
-```csharp
-public class AppDbContext : IndexedDbContext
-{
-    public AppDbContext(ILogger<AppDbContext> logger)
-        : base(new IndexedDbOptions
-        {
-            DatabaseName = "SampleDB",
-            Version = 1
-        }, logger)
-    {
-    }
-
-    // -----------------------------------------------------
-    // ENTITY REGISTRY
-    // -----------------------------------------------------
+    public AppDbContext(IndexedDbOptions options) : base(options) { }
 
     protected override IEnumerable<Type> GetEntityTypes()
     {
-        yield return typeof(TodoItem);
-
-        // Add more entity types here as needed
+        return [typeof(TodoItem), typeof(User)];
     }
 
-    // -----------------------------------------------------
-    // STORES
-    // -----------------------------------------------------
-
-    public IndexedSet<TodoItem> Todos => Set<TodoItem>("todos");
-
-    // Add more stores here as needed
-
-    // -----------------------------------------------------
-    // OPTIONAL: Query access (clean API)
-    // -----------------------------------------------------
-    public IndexedQuery<TodoItem> TodoQuery => Query<TodoItem>("todos");
-
-    // Add more queries here as needed
+    public IndexedSet<TodoItem> Todos => Set<TodoItem>("TodoItems");
+    public IndexedSet<User> Users => Set<User>("Users");
 }
 ```
 
----
-
-### 3. Define Model
+### 3. Define Entities
 
 ```csharp
-[IndexedStore("todos")]
+[IndexedStore("TodoItems")]
 public class TodoItem
 {
     [IndexedKey]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    public string Title { get; set; } = "";
-
-    public bool IsDone { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public bool IsDone { get; set; } = false;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 ```
 
 ---
 
-## 🧪 Basic Usage
+## 🧪 Usage
 
-### ➕ Add
+### Basic Operations
 
 ```csharp
-await Db.Todos.AddAsync(new TodoItem
+// Add
+await db.Todos.AddAsync(new TodoItem { Title = "Learn ManuHub.IndexedDB" });
+
+// Get All
+var allTodos = await db.Todos.GetAllAsync();
+
+// Query
+var completed = await db.Todos.Query()
+    .WhereEquals("IsDone", true)
+    .ToListAsync();
+
+// Update & Delete
+await db.Todos.UpdateAsync(todo);
+await db.Todos.DeleteAsync(todo.Id);
+```
+
+### Batch Operations
+```csharp
+await db.Todos.AddRangeAsync(items);
+await db.Todos.UpdateRangeAsync(updatedItems);
+await db.Todos.DeleteRangeAsync(idsToDelete);
+```
+
+---
+
+## 🔄 Migrations (v1.2 Feature)
+
+### Basic Migration Example
+
+```csharp
+builder.Services.AddIndexedDb<AppDbContext>(options =>
 {
-    Title = "Learn IndexedDB.NET"
+    options.DatabaseName = "MyAppDb";
+    options.Version = 3;   // Current version
+
+    options.Migrations.Add(1, builder =>
+    {
+        builder.CreateStore<TodoItem>();
+        builder.CreateStore<User>();
+    });
+
+    options.Migrations.Add(2, builder =>
+    {
+        builder.CreateStore<Project>();
+    });
+
+    options.Migrations.Add(3, builder =>
+    {
+        builder.CreateStore<TodoItem>(); // Re-apply if needed
+        // Optional: Data transformation
+        // builder.TransformData<TodoItem>(todo => { ... });
+    });
+});
+```
+
+### Advanced Migration with Data Transformation
+
+```csharp
+options.Migrations.Add(4, builder =>
+{
+    builder.CreateStore<Order>();
+
+    // Transform existing data during migration
+    builder.TransformData<TodoItem>(todo =>
+    {
+        todo.UpdatedAt = DateTime.UtcNow;
+        todo.Version = 2;
+        return todo;
+    });
 });
 ```
 
 ---
 
-### 📖 Get All
-
-```csharp
-var items = await Db.Todos.GetAllAsync();
-```
-
----
-
-### ✏️ Update
-
-```csharp
-item.Title = "Updated";
-await Db.Todos.UpdateAsync(item);
-```
-
----
-
-### ❌ Delete
-
-```csharp
-await Db.Todos.DeleteAsync(item.Id);
-```
-
----
-
-## ⚡ Batch Operations
-
-### ➕ Add Range
-
-```csharp
-await Db.Todos.AddRangeAsync(items);
-```
-
----
-
-### ✏️ Update Range
-
-```csharp
-await Db.Todos.UpdateRangeAsync(items);
-```
-
----
-
-### ❌ Delete Range
-
-```csharp
-await Db.Todos.DeleteRangeAsync(items.Select(x => x.Id));
-```
-
----
-
-## 🧠 Architecture
-
-ManuHub.IndexedDB uses a layered design:
+## 🛠 Architecture
 
 ```
 Blazor App
    ↓
-IndexedDbContext (C#)
+IndexedDbContext
    ↓
-IndexedSet<T>
+IndexedSet<T> / IndexedQuery<T>
    ↓
-JS Interop Layer
+Smart JS Interop Layer (Multi-entity safe)
    ↓
 IndexedDB Browser API
 ```
 
 ---
 
-## ⚠️ Version 1 Limitations
+## ⚙️ Key Improvements in v1.2
 
-This is a **V1 release focused on core stability**.
-
-### Not included yet:
-
-* LINQ-style querying (`Where`, `Select`)
-* Change tracking / `SaveChanges()`
-* Relationships / navigation properties
-* Transactions API abstraction
-* Offline sync (MongoDB / REST)
-* Advanced indexing strategy
-* Aggregations / grouping
-* Multi-database orchestration
-
----
-
-## 🧭 Roadmap (V2)
-
-Planned improvements:
-
-* LINQ expression support
-* EF Core-style change tracking
-* Unit-of-work pattern
-* Offline sync engine (REST / MongoDB)
-* Query optimizer & index selection
-* Migration framework
-* Conflict resolution strategies
-
----
-
-## 💡 Design Philosophy
-
-> “Make browser storage feel like EF Core — but lightweight, fast, and Blazor-native.”
-
----
-
-## 🛠 Tech Stack
-
-* Blazor WebAssembly
-* IndexedDB (Browser API)
-* JavaScript ES Modules
-* .NET JSInterop
+- Removed hardcoded `normalizeEntity` (Todo-only)
+- Smart generic entity normalization
+- Reliable database versioning (no more data loss on refresh)
+- Better fallback for `Id` / `Guid` keys
+- Stable migration system
+- Improved error handling & logging
 
 ---
 
@@ -276,16 +220,19 @@ MIT License
 
 ## 🤝 Contributing
 
-Pull requests and suggestions are welcome.
-This project is designed to evolve toward a full EF-Core-like IndexedDB ORM.
+Pull requests, bug reports, and feature suggestions are welcome.
 
 ---
 
 ## ⭐ Status
 
-**Version:** 1.1.0  
-**Stability:** Production-ready (core CRUD)  
-**Target:** Blazor WebAssembly applications  
+| Property  | Value                     |
+| --------- | ------------------------- |
+| Version   | 1.2.0                     |
+| Stability | Production Ready          |
+| Target    | Blazor WebAssembly        |
+| Scope     | Client-side IndexedDB ORM |
 
+---
 
-
+**Made with ❤️ for the Blazor community**
