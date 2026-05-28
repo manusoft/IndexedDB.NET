@@ -7,7 +7,7 @@
 	<RootNamespace>ManuHub.IndexedDB</RootNamespace>
 	<AssemblyName>ManuHub.IndexedDB</AssemblyName>	
 	<PackageId>ManuHub.IndexedDB</PackageId>
-	<Version>1.1.0</Version>
+	<Version>2.0.0</Version>
 	<Authors>ManuHub</Authors>
 	<Company>ManuHub</Company>
 	<Description>EF Core–style IndexedDB wrapper for Blazor WebAssembly with clean CRUD, batch operations, and JSInterop abstraction.</Description>

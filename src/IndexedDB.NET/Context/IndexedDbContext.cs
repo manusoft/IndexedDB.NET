@@ -1,8 +1,8 @@
 ﻿using ManuHub.IndexedDB.Metadata;
+using ManuHub.IndexedDB.Migrations;
 using ManuHub.IndexedDB.Queries;
 using ManuHub.IndexedDB.Stores;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 
 namespace ManuHub.IndexedDB.Context;
@@ -17,46 +17,32 @@ public abstract class IndexedDbContext
 
     internal IServiceProvider Services { get; set; } = default!;
 
-    protected IndexedDbContext(IndexedDbOptions options, ILogger? logger = null)
+    protected IndexedDbContext(IndexedDbOptions options)
     {
-        _options = options;
+        _options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
     protected abstract IEnumerable<Type> GetEntityTypes();
 
-    // -----------------------------------------------------
-    // JS RUNTIME RESOLUTION
-    // -----------------------------------------------------
     private IJSRuntime JS => _js ??= Services.GetRequiredService<IJSRuntime>();
 
-    // -----------------------------------------------------
-    // AUTO INITIALIZATION
-    // -----------------------------------------------------
     private async Task EnsureReadyAsync()
     {
-        if (_initialized)
-            return;
+        if (_initialized) return;
 
         await _lock.WaitAsync();
-
         try
         {
-            if (_initialized)
-                return;
+            if (_initialized) return;
 
             _module = await JS.InvokeAsync<IJSObjectReference>(
-                "import",
-                "./_content/ManuHub.IndexedDB/indexeddb.js");
+                "import", "./_content/ManuHub.IndexedDB/indexeddb.js");
 
-            var stores = GetEntityTypes()
+            var currentStores = GetEntityTypes()
                 .Select(StoreDefinition.FromType)
                 .ToList();
 
-            await _module.InvokeVoidAsync(
-                "initializeDatabase",
-                _options.DatabaseName,
-                _options.Version,
-                stores);
+            await ApplyMigrationsAsync(currentStores);
 
             _initialized = true;
         }
@@ -66,38 +52,51 @@ public abstract class IndexedDbContext
         }
     }
 
-    // -----------------------------------------------------
-    // SAFE MODULE ACCESS
-    // -----------------------------------------------------
+    private async Task ApplyMigrationsAsync(List<StoreDefinition> currentStores)
+    {
+        var effectiveVersion = _options.GetEffectiveVersion();
+
+        try
+        {
+            var migrations = _options.Migrations.GetAll();
+
+            foreach (var migration in migrations)
+            {
+                var builder = new MigrationBuilder();
+                migration.Configure(builder);
+                await _module!.InvokeVoidAsync("applyMigration",
+                    _options.DatabaseName, migration.Version, builder.Stores);
+            }
+
+            await _module!.InvokeVoidAsync("initializeDatabase",
+                _options.DatabaseName, effectiveVersion, currentStores);
+
+            Console.WriteLine($"[IndexedDB] ✅ Database ready (v{effectiveVersion})");
+        }
+        catch (JSException ex)
+        {
+            if (ex.Message.Contains("less than the existing version"))
+            {
+                // Silent handling - use existing database (most common case)
+                await _module!.InvokeVoidAsync("initializeDatabase",
+                    _options.DatabaseName, effectiveVersion, currentStores);
+
+                Console.WriteLine($"[IndexedDB] ✅ Using existing database");
+            }
+            else
+            {
+                Console.Error.WriteLine($"[IndexedDB] Error: {ex.Message}");
+                throw;
+            }
+        }
+    }
+
     internal async Task<IJSObjectReference> Module()
     {
         await EnsureReadyAsync();
         return _module!;
     }
 
-    // -----------------------------------------------------
-    // STORE ACCESS
-    // -----------------------------------------------------
-    protected IndexedSet<T> Set<T>(string storeName)
-    {
-        _ = EnsureReadyAsync();
-
-        return new IndexedSet<T>(
-            Module,
-            _options.DatabaseName,
-            storeName);
-    }
-
-    // -----------------------------------------------------
-    // QUERY
-    // -----------------------------------------------------
-    protected IndexedQuery<T> Query<T>(string storeName)
-    {
-        _ = EnsureReadyAsync();
-
-        return new IndexedQuery<T>(
-            Module,
-            _options.DatabaseName,
-            storeName);
-    }
+    protected IndexedSet<T> Set<T>(string storeName) => new(Module, _options.DatabaseName, storeName);
+    protected IndexedQuery<T> Query<T>(string storeName) => new(Module, _options.DatabaseName, storeName);
 }

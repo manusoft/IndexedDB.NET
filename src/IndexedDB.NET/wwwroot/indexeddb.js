@@ -1,5 +1,5 @@
 // =====================================================
-// ManuHub.IndexedDB - Production JS Engine (FIXED)
+// ManuHub.IndexedDB - Stable & Persistent Version
 // =====================================================
 
 const databases = new Map();
@@ -7,106 +7,94 @@ const transactions = new Map();
 const dbConfigs = new Map();
 
 // -----------------------------------------------------
-// SAFE DB VALIDATION
+// UTILITIES
 // -----------------------------------------------------
-
-function isDbInvalid(db) {
-    try {
-        return !db || db.objectStoreNames === undefined;
-    } catch {
-        return true;
-    }
-}
 
 function normalizeEntity(entity) {
+    if (!entity || typeof entity !== "object") return entity;
 
-    if (!entity || typeof entity !== "object") {
-        return entity;
+    const normalized = { ...entity };
+
+    // Critical: Ensure Id exists for keyPath
+    if (normalized.Id === undefined && normalized.id === undefined) {
+        normalized.Id = crypto.randomUUID();
+    } else if (normalized.id !== undefined && normalized.Id === undefined) {
+        normalized.Id = normalized.id;
+        delete normalized.id;
     }
 
-    return {
-        Id: entity.Id ?? entity.id ?? crypto.randomUUID(),
-        Title: entity.Title ?? entity.title ?? "",
-        IsDone: entity.IsDone ?? entity.isDone ?? false
-    };
+    return normalized;
 }
 
 // -----------------------------------------------------
-// OPEN DATABASE (FIXED - NO STALE CONNECTIONS)
+// OPEN DATABASE (Most Stable)
 // -----------------------------------------------------
 
 async function openDatabase(name, version, stores = []) {
-
     const key = `${name}_${version}`;
-
     dbConfigs.set(name, { version, stores });
 
     const cached = databases.get(key);
-
-    if (cached) {
-
-        if (isDbInvalid(cached)) {
-            databases.delete(key);
-        } else {
-            return cached;
-        }
-    }
+    if (cached && !isDbInvalid(cached)) return cached;
 
     const db = await new Promise((resolve, reject) => {
-
         const request = indexedDB.open(name, version);
 
         request.onupgradeneeded = (event) => {
-
             const db = event.target.result;
+            console.info(`[IndexedDB] Upgrading ${name} from v${event.oldVersion} to v${version}`);
 
             for (const store of stores || []) {
-
                 if (!db.objectStoreNames.contains(store.name)) {
+                    const objectStore = db.createObjectStore(store.name, {
+                        keyPath: store.keyPath || "Id",
+                        autoIncrement: !!store.autoIncrement
+                    });
 
-                    const objectStore = db.createObjectStore(
-                        store.name,
-                        {
-                            keyPath: store.keyPath,
-                            autoIncrement: store.autoIncrement
+                    for (const index of store.indexes || []) {
+                        if (!objectStore.indexNames.contains(index.name)) {
+                            objectStore.createIndex(index.name, index.keyPath, {
+                                unique: !!index.unique
+                            });
                         }
-                    );
-
-                    for (const index of (store.indexes || [])) {
-                        objectStore.createIndex(
-                            index.name,
-                            index.keyPath,
-                            { unique: !!index.unique }
-                        );
                     }
                 }
             }
         };
 
         request.onsuccess = () => resolve(request.result);
-
         request.onerror = () => reject(request.error);
-
         request.onblocked = () => reject(new Error("IndexedDB blocked"));
     });
 
-    // 🔥 handle upgrade safety
     db.onversionchange = () => {
         db.close();
         databases.delete(key);
     };
 
     databases.set(key, db);
-
     return db;
 }
 
-// -----------------------------------------------------
-// CONFIG
-// -----------------------------------------------------
+function isDbInvalid(db) {
+    try {
+        return !db || typeof db.objectStoreNames === 'undefined';
+    } catch {
+        return true;
+    }
+}
 
-function getConfig(name) {
-    return dbConfigs.get(name) || {};
+export async function deleteDatabase(name) {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(name);
+        request.onsuccess = () => {
+            console.info(`[IndexedDB] Database '${name}' deleted`);
+            databases.clear();
+            dbConfigs.delete(name);
+            resolve(true);
+        };
+        request.onerror = () => reject(request.error);
+    });
 }
 
 // -----------------------------------------------------
@@ -123,111 +111,48 @@ export async function applyMigration(name, version, stores) {
 }
 
 // -----------------------------------------------------
-// TRANSACTIONS
-// -----------------------------------------------------
-
-export async function beginTransaction(name, stores, mode) {
-
-    const cfg = getConfig(name);
-    const db = await openDatabase(name, cfg.version, cfg.stores);
-
-    const tx = db.transaction(stores, mode);
-    const id = crypto.randomUUID();
-
-    transactions.set(id, tx);
-
-    tx.oncomplete = () => transactions.delete(id);
-    tx.onerror = () => transactions.delete(id);
-    tx.onabort = () => transactions.delete(id);
-
-    return id;
-}
-
-export async function commitTransaction(id) {
-    const tx = transactions.get(id);
-    if (tx?.commit) tx.commit();
-    transactions.delete(id);
-}
-
-export async function abortTransaction(id) {
-    const tx = transactions.get(id);
-    if (tx) tx.abort();
-    transactions.delete(id);
-}
-
-// -----------------------------------------------------
-// CORE EXECUTOR (SAFE)
+// CRUD
 // -----------------------------------------------------
 
 async function execute(dbName, storeName, mode, action) {
-
-    const cfg = getConfig(dbName);
-    const db = await openDatabase(dbName, cfg.version, cfg.stores);
+    const cfg = dbConfigs.get(dbName) || {};
+    const db = await openDatabase(dbName, cfg.version || 1, cfg.stores);
 
     if (!db.objectStoreNames.contains(storeName)) {
-        throw new Error(`Store '${storeName}' not ready`);
+        throw new Error(`Store '${storeName}' not found`);
     }
 
     return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, mode);
+        const store = tx.objectStore(storeName);
+        const request = action(store);
 
-        try {
-
-            const tx = db.transaction(storeName, mode);
-            const store = tx.objectStore(storeName);
-
-            const request = action(store);
-
-            request.onsuccess = () => resolve(request.result);
-
-            request.onerror = () => {
-
-                const err = request.error;
-
-                if (err?.name === "ConstraintError") {
-                    reject(new Error("DuplicateKeyException"));
-                    return;
-                }
-
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => {
+            const err = request.error;
+            if (err?.name === "ConstraintError") {
+                reject(new Error("DuplicateKeyException"));
+            } else {
                 reject(err);
-            };
-
-        } catch (err) {
-            reject(err);
-        }
+            }
+        };
     });
 }
 
-// -----------------------------------------------------
-// CRUD 
-// -----------------------------------------------------
-
 export async function add(db, store, entity) {
-    return execute(db, store, "readwrite", s => {
-
-        if (!entity || typeof entity !== "object") {
-            throw new Error("Invalid entity");
-        }
-
-        entity = normalizeEntity(entity);
-
-        return s.add(entity);
-    });
+    return execute(db, store, "readwrite", s => s.add(normalizeEntity(entity)));
 }
 
 export async function addRange(db, store, entities) {
-
-    const cfg = getConfig(db);
-    const database = await openDatabase(db, cfg.version, cfg.stores);
+    const cfg = dbConfigs.get(db) || {};
+    const database = await openDatabase(db, cfg.version || 1, cfg.stores);
 
     return new Promise((resolve, reject) => {
-
         const tx = database.transaction(store, "readwrite");
         const s = tx.objectStore(store);
 
         for (const e of entities) {
-
-            const entity = normalizeEntity(e);
-            s.add(entity);
+            s.add(normalizeEntity(e));
         }
 
         tx.oncomplete = () => resolve(true);
@@ -236,49 +161,21 @@ export async function addRange(db, store, entities) {
 }
 
 export async function put(db, store, entity) {
-
-    return execute(db, store, "readwrite", s => {
-
-        if (!entity || typeof entity !== "object") {
-            throw new Error("Invalid entity");
-        }
-
-        entity = normalizeEntity(entity);
-        return s.put(entity);
-    });
+    return execute(db, store, "readwrite", s => s.put(normalizeEntity(entity)));
 }
 
 export async function putRange(db, store, entities) {
-
-    const cfg = getConfig(db);
-    const database = await openDatabase(
-        db,
-        cfg.version,
-        cfg.stores);
+    const cfg = dbConfigs.get(db) || {};
+    const database = await openDatabase(db, cfg.version || 1, cfg.stores);
 
     return new Promise((resolve, reject) => {
+        const tx = database.transaction(store, "readwrite");
+        const s = tx.objectStore(store);
 
-        try {
+        for (const e of entities) s.put(normalizeEntity(e));
 
-            const tx = database.transaction(store, "readwrite");
-            const s = tx.objectStore(store);
-
-            for (const e of entities) {
-
-                const entity = normalizeEntity(e);
-
-                s.put(entity);
-            }
-
-            tx.oncomplete = () => resolve(true);
-
-            tx.onerror = () => reject(tx.error);
-
-            tx.onabort = () => reject(tx.error);
-
-        } catch (err) {
-            reject(err);
-        }
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
     });
 }
 
@@ -287,28 +184,17 @@ export async function remove(db, store, key) {
 }
 
 export async function removeRange(db, store, keys) {
-
-    const cfg = getConfig(db);
-    const database = await openDatabase(db, cfg.version, cfg.stores);
+    const cfg = dbConfigs.get(db) || {};
+    const database = await openDatabase(db, cfg.version || 1, cfg.stores);
 
     return new Promise((resolve, reject) => {
+        const tx = database.transaction(store, "readwrite");
+        const s = tx.objectStore(store);
 
-        try {
+        for (const key of keys) s.delete(key);
 
-            const tx = database.transaction(store, "readwrite");
-            const s = tx.objectStore(store);
-
-            for (const key of keys) {
-                s.delete(key);
-            }
-
-            tx.oncomplete = () => resolve(true);
-            tx.onerror = () => reject(tx.error);
-            tx.onabort = () => reject(tx.error);
-
-        } catch (err) {
-            reject(err);
-        }
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
     });
 }
 
@@ -317,109 +203,29 @@ export async function get(db, store, key) {
 }
 
 export async function getAll(db, store) {
-
-    const cfg = getConfig(db);
-    const database = await openDatabase(db, cfg.version, cfg.stores);
+    const cfg = dbConfigs.get(db) || {};
+    const database = await openDatabase(db, cfg.version || 1, cfg.stores);
 
     return new Promise((resolve, reject) => {
-
-        const tx = database.transaction(store, "readonly");
-        const s = tx.objectStore(store);
-
-        const request = s.getAll();
-
+        const request = database.transaction(store, "readonly").objectStore(store).getAll();
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
 }
 
-// -----------------------------------------------------
-// QUERY (FIXED SAFETY)
-// -----------------------------------------------------
-
 export async function queryWhereEquals(db, store, indexName, value) {
-
-    const cfg = getConfig(db);
-    const database = await openDatabase(db, cfg.version, cfg.stores);
+    const cfg = dbConfigs.get(db) || {};
+    const database = await openDatabase(db, cfg.version || 1, cfg.stores);
 
     return new Promise((resolve, reject) => {
-
         const tx = database.transaction(store, "readonly");
         const s = tx.objectStore(store);
 
-        let request;
+        let request = indexName && s.indexNames.contains(indexName)
+            ? s.index(indexName).getAll(value)
+            : s.getAll();
 
-        try {
-
-            if (indexName && s.indexNames.contains(indexName)) {
-                const index = s.index(indexName);
-                request = index.getAll(value);
-            }
-            else {
-                request = s.getAll();
-            }
-
-        } catch (err) {
-            reject(new Error(`Invalid index '${indexName}'`));
-            return;
-        }
-
-        request.onsuccess = () => {
-
-            let result = request.result;
-
-            if (!indexName && value !== undefined) {
-                result = result.filter(x =>
-                    Object.values(x).includes(value)
-                );
-            }
-
-            resolve(result);
-        };
-
+        request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
 }
-
-// -----------------------------------------------------
-// CURSOR
-// -----------------------------------------------------
-
-export async function cursorAll(db, store) {
-
-    const cfg = getConfig(db);
-    const database = await openDatabase(db, cfg.version, cfg.stores);
-
-    return new Promise((resolve, reject) => {
-
-        const tx = database.transaction(store, "readonly");
-        const s = tx.objectStore(store);
-
-        const results = [];
-        const request = s.openCursor();
-
-        request.onsuccess = (event) => {
-
-            const cursor = event.target.result;
-
-            if (cursor) {
-                results.push(cursor.value);
-                cursor.continue();
-            } else {
-                resolve(results);
-            }
-        };
-
-        request.onerror = () => reject(request.error);
-    });
-}
-
-// -----------------------------------------------------
-// EXPORT DEBUG
-// -----------------------------------------------------
-
-export {
-    databases,
-    transactions,
-    dbConfigs
-};

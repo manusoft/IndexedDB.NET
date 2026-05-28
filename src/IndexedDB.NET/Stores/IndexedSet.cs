@@ -1,4 +1,5 @@
-﻿using ManuHub.IndexedDB.Queries;
+﻿using ManuHub.IndexedDB.Exceptions;
+using ManuHub.IndexedDB.Queries;
 using Microsoft.JSInterop;
 
 namespace ManuHub.IndexedDB.Stores;
@@ -50,14 +51,27 @@ public sealed class IndexedSet<T>
 
     public async ValueTask AddRangeAsync(IEnumerable<T> entities, CancellationToken cancellationToken = default)
     {
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+
         var js = await JS();
 
-        await js.InvokeVoidAsync(
-            "addRange",
-            cancellationToken,
-            _databaseName,
-            _storeName,
-            entities);
+        try
+        {
+            await js.InvokeVoidAsync(
+                "addRange",
+                cancellationToken,
+                _databaseName,
+                _storeName,
+                entities);
+        }
+        catch (JSException ex) when (ex.Message.Contains("key path") || ex.Message.Contains("DataError"))
+        {
+            throw new IndexedDbException(
+                $"Failed to add entities to store '{_storeName}'. " +
+                "Make sure your entity has a property marked with [IndexedKeyAttribute] " +
+                "or a property named 'Id'.", ex);
+        }
     }
 
     public async ValueTask UpdateAsync(T entity, CancellationToken cancellationToken = default)
