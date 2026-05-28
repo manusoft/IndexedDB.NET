@@ -1,34 +1,15 @@
+using IndexedDB.NET.Wasm;
 using ManuHub.IndexedDB;
 using ManuHub.IndexedDB.Context;
-using ManuHub.IndexedDB.Queries;
 using ManuHub.IndexedDB.Stores;
 
 public class AppDbContext : IndexedDbContext
 {
-    public AppDbContext(ILogger<AppDbContext> logger)
-        : base(new IndexedDbOptions
-        {
-            DatabaseName = "SampleDB",
-            Version = 1
-        },logger)
-    {
-    }
+    public AppDbContext(IndexedDbOptions options) : base(options) { }
 
-    // -----------------------------------------------------
-    // ENTITY REGISTRY
-    // -----------------------------------------------------
+    protected override IEnumerable<Type> GetEntityTypes() =>
+        [typeof(TodoItem), typeof(Employee)];
 
-    protected override IEnumerable<Type> GetEntityTypes()
-    {
-        yield return typeof(TodoItem);
-    }
-
-    // -----------------------------------------------------
-    // STORES
-    // -----------------------------------------------------
-
-    public IndexedSet<TodoItem> Todos => Set<TodoItem>("todos");
-
-    // OPTIONAL: Query access (clean API)
-    public IndexedQuery<TodoItem> TodoQuery => Query<TodoItem>("todos");
+    public IndexedSet<TodoItem> Todos => Set<TodoItem>("Todos");
+    public IndexedSet<Employee> Employees => Set<Employee>("Employees");
 }

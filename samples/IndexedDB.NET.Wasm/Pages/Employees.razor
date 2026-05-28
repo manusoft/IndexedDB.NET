@@ -1,0 +1,120 @@
+﻿@page "/employees"
+@using Bogus
+@inject AppDbContext Db
+
+<div class="container py-4">
+
+    <div class="mb-4 text-center">
+        <h2 class="fw-bold">📦 IndexedDB Test Lab</h2>
+        <p class="text-muted">Moq Employee Data</p>
+        <a href="/" class="btn btn-outline-primary">Home</a>
+    </div>
+
+    <!-- ACTION PANEL -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-body d-flex flex-column align-items-center gap-2">
+            <input class="form-control"
+                   style="min-width:200px"
+                   placeholder="Enter number..."
+                   @bind="count" />
+
+            <button class="btn btn-success w-100" @onclick="AddBatch">Add Bulk Data</button>
+            <label class="w-100">Total Items: @totalData</label>
+        </div>
+    </div>
+
+    <!-- LIST -->
+    <QuickGrid Class="table-striped table"
+               TGridItem="Employee"
+               ItemsProvider="GetEmployees"
+               Virtualize="true"
+               OverscanCount="5">
+        <PropertyColumn Property="@(p => p.FirstName)" Title="First Name" />
+        <PropertyColumn Property="@(p => p.LastName)" Title="Last Name" />
+        <PropertyColumn Property="@(p => p.Gender)" Title="Gender" />
+        <PropertyColumn Property="@(p => p.Phone)" Title="Phone" />
+        <PropertyColumn Property="@(p => p.Email)" Title="Email" />
+        <PropertyColumn Property="@(p => p.Department)" Title="Department" />
+        <TemplateColumn Title="Actions">
+            <button class="btn btn-sm btn-danger" @onclick="() => Delete(context)">
+                Delete
+            </button>
+        </TemplateColumn>
+    </QuickGrid>
+
+</div>
+
+@code {
+    private int count = 0;
+    private int totalData { get; set; }
+
+    private async ValueTask<GridItemsProviderResult<Employee>> GetEmployees(GridItemsProviderRequest<Employee> request)
+    {
+        var items = await Db.Employees.GetAllAsync();
+        var totalCount = items.Count;
+        totalData = totalCount;
+
+        var query = items.AsQueryable()
+            .OrderByDescending(x => x.Id)
+            .Skip(request.StartIndex);
+
+        if (request.Count > 0)
+            query = query.Take(request.Count.Value);
+
+        var employees = query.ToList();
+
+        return GridItemsProviderResult.From(employees, totalCount);
+    }
+
+    private async Task AddBatch()
+    {
+        if (count <= 0) return;
+
+        var items = GenerateMockEmployees(count);
+
+        if (items.Count == 0) return;
+
+        foreach (var item in items)
+        {
+            await Db.Employees.AddAsync(new Employee
+            {
+                Id = item.Id,
+                FirstName = item.FirstName,
+                LastName = item.LastName,
+                Gender = item.Gender,
+                Phone = item.Phone,
+                Email = item.Email,
+                Department = item.Department
+            });
+        }
+    }
+
+    private static List<Employee> GenerateMockEmployees(int count)
+    {
+        try
+        {
+            var faker = new Faker<Employee>()
+             .RuleFor(e => e.Id, f => Guid.NewGuid())
+             .RuleFor(e => e.Gender, f => f.PickRandom<Gender>())
+             // Generates actual names based on the gender picked above
+             .RuleFor(e => e.FirstName, (f, e) => e.Gender == Gender.Male ? f.Name.FirstName(Bogus.DataSets.Name.Gender.Male) : f.Name.FirstName(Bogus.DataSets.Name.Gender.Female))
+             .RuleFor(e => e.LastName, f => f.Name.LastName())
+             .RuleFor(e => e.Phone, f => f.Phone.PhoneNumber())
+             .RuleFor(e => e.Email, (f, e) => f.Internet.Email(e.FirstName, e.LastName))
+             .RuleFor(e => e.Department, f => f.PickRandom("HR", "IT", "Finance", "Sales"));
+
+            return faker.Generate(count);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+            return new List<Employee>();
+        }
+    }
+
+    // ---------------- DELETE ----------------
+    private async Task Delete(Employee item)
+    {
+        await Db.Employees.DeleteAsync(item.Id);
+    }
+}
